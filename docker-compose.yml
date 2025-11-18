@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: mock_postgres
+    environment:
+      POSTGRES_USER: mockuser
+      POSTGRES_PASSWORD: mockpassword
+      POSTGRES_DB: mock_communications
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - mock_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mockuser"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: mock_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - mock_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mock_api
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=mockuser
+      - POSTGRES_PASSWORD=mockpassword
+      - POSTGRES_DB=mock_communications
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - mock_network
+    volumes:
+      - ./src:/app/src
+      - ./mock_recording.mp3:/app/mock_recording.mp3
+    command: npm run dev
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mock_worker
+    environment:
+      - NODE_ENV=development
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=mockuser
+      - POSTGRES_PASSWORD=mockpassword
+      - POSTGRES_DB=mock_communications
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - mock_network
+    volumes:
+      - ./src:/app/src
+      - ./mock_recording.mp3:/app/mock_recording.mp3
+    command: npm run worker
+
+networks:
+  mock_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
