@@ -13,6 +13,8 @@ import { CallStatus, CreateCallRequest, Call } from '../types';
 import { getNextState, getStateDelay } from '../utils/callStateMachine';
 import { broadcastCallUpdate } from './websocketService';
 import { decrementConcurrentCalls } from '../middleware/rateLimiter';
+import { enqueueRecordingUpload } from './queueService';
+import { incrementCompletedCalls } from '../models/Metrics';
 
 // Store call state in Redis
 const storeCallStateInRedis = async (callId: string, status: CallStatus): Promise<void> => {
@@ -71,6 +73,13 @@ const processCallStateTransitions = async (callId: string, apiKey: string): Prom
     // Update active calls count in metrics
     const activeCount = await getActiveCallsCount(apiKey);
     await updateActiveCalls(activeCount);
+    
+    // Incrementing completed calls metric
+    await incrementCompletedCalls();
+    
+    // Triggerig background job for recording upload
+    console.log(`📥 Triggering recording upload for call: ${callId}`);
+    await enqueueRecordingUpload(callId, apiKey);
     
     console.log(`✅ Call ${callId} completed`);
     
