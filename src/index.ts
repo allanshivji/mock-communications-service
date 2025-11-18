@@ -74,7 +74,7 @@ const startServer = async () => {
     console.log('🔄 Connecting to Redis...');
     await connectRedis();
     
-    // Test database connection
+    // Testing database connections
     console.log('🔄 Testing database connection...');
     await pool.query('SELECT NOW()');
     console.log('✅ Database connected successfully');
