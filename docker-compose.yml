@@ -60,7 +60,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./mock_recording.mp3:/app/mock_recording.mp3
-    command: npm run dev
+    command: ts-node src/index.ts
 
   worker:
     build:
@@ -86,7 +86,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./mock_recording.mp3:/app/mock_recording.mp3
-    command: npm run worker
+    command: ts-node src/workers/recordingWorker.ts
 
 networks:
   mock_network:
