@@ -1,10 +1,10 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { query } from '../config/database';
 import { Call, CallStatus, CreateCallRequest } from '../types';
 
 // Creating new call
 export async function createCall(data: CreateCallRequest, apiKey: string): Promise<Call> {
-  const id = uuidv4();
+  const id = randomUUID();
   const status = CallStatus.QUEUED;
   
   const insertQuery = `

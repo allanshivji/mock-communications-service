@@ -4,6 +4,9 @@ import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { pool } from './config/database';
 import { connectRedis } from './config/redis';
+import callsRouter from './routes/calls';
+import metricsRouter from './routes/metrics';
+import { initializeWebSocketServer } from './services/websocketService';
 
 // Loading environment variables
 dotenv.config();
@@ -25,7 +28,7 @@ app.use((req, res, next) => {
 
 // Health checkup
 app.get('/health', (req, res) => {
-  res.json({
+  return res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
@@ -34,7 +37,7 @@ app.get('/health', (req, res) => {
 
 // Root endpoint
 app.get('/', (req, res) => {
-  res.json({
+  return res.json({
     message: 'Mock Communications Service API',
     version: '1.0.0',
     endpoints: {
@@ -49,6 +52,8 @@ app.get('/', (req, res) => {
   });
 });
 
+app.use('/calls', callsRouter);
+app.use('/metrics', metricsRouter);
 
 // 404 handler
 app.use((req, res) => {
@@ -74,10 +79,14 @@ const startServer = async () => {
     console.log('🔄 Connecting to Redis...');
     await connectRedis();
     
-    // Testing database connections
+    // Test database connection
     console.log('🔄 Testing database connection...');
     await pool.query('SELECT NOW()');
     console.log('✅ Database connected successfully');
+    
+    // Initialize WebSocket server
+    console.log('🔄 Initializing WebSocket server...');
+    initializeWebSocketServer(server);
     
     // Start HTTP server
     server.listen(PORT, () => {

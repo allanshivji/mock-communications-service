@@ -6,7 +6,7 @@ const MAX_CONCURRENT_CALLS = parseInt(process.env.MAX_CONCURRENT_CALLS_PER_KEY |
 const MAX_CPS = parseInt(process.env.MAX_CPS_PER_KEY || '2');
 
 // Rate limiter middleware
-export const rateLimiter = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+export const rateLimiter = async (req: Request, res: Response, next: NextFunction) => {
   const apiKey = req.apiKey;
   
   if (!apiKey) {
@@ -18,15 +18,15 @@ export const rateLimiter = async (req: Request, res: Response, next: NextFunctio
   }
   
   try {
-    // Keys for Redis
     const concurrentKey = `concurrent:${apiKey}`;
     const cpsKey = `cps:${apiKey}`;
     
-    // FirsTly: Concurrent calls limit
-    const concurrentCalls = await redisClient.get(concurrentKey);
-    const currentConcurrent = concurrentCalls ? parseInt(concurrentCalls) : 0;
+    //Firstly: Concurrent calls limit (ATOMIC INCREMENT)
+    const newConcurrentCount = await redisClient.incr(concurrentKey);
     
-    if (currentConcurrent >= MAX_CONCURRENT_CALLS) {
+    if (newConcurrentCount > MAX_CONCURRENT_CALLS) {
+      // if Exceeded limit, decrement back
+      await redisClient.decr(concurrentKey);
       res.status(429).json({
         error: 'Rate limit exceeded',
         message: `Maximum concurrent calls reached (${MAX_CONCURRENT_CALLS})`
@@ -35,10 +35,16 @@ export const rateLimiter = async (req: Request, res: Response, next: NextFunctio
     }
     
     // Secondly: Calls per second limit
-    const callsInLastSecond = await redisClient.get(cpsKey);
-    const currentCPS = callsInLastSecond ? parseInt(callsInLastSecond) : 0;
+    const cpsCount = await redisClient.incr(cpsKey);
     
-    if (currentCPS >= MAX_CPS) {
+    if (cpsCount === 1) {
+      // First call in this second, set expiry
+      await redisClient.expire(cpsKey, 1);
+    }
+    
+    if (cpsCount > MAX_CPS) {
+      // Exceeded CPS limit, decrement concurrent counter
+      await redisClient.decr(concurrentKey);
       res.status(429).json({
         error: 'Rate limit exceeded',
         message: `Calls per second limit exceeded (${MAX_CPS})`
@@ -46,20 +52,9 @@ export const rateLimiter = async (req: Request, res: Response, next: NextFunctio
       return;
     }
     
-    // Increment CPS counter (expires in 1 second)
-    const cpsCount = await redisClient.incr(cpsKey);
-    if (cpsCount === 1) {
-      // Set expiry only on first increment
-      await redisClient.expire(cpsKey, 1);
-    }
-    
-    // Increment concurrent calls counter
-    await redisClient.incr(concurrentKey);
-    
-    // Store the keys in request for cleanup later
-    req.apiKey = apiKey; // Already set, but just to be sure
-    
+    // Both checks passed
     next();
+    
   } catch (error) {
     console.error('Rate limiter error:', error);
     res.status(500).json({
@@ -69,7 +64,7 @@ export const rateLimiter = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
-// Helper function to decrement concurrent calls (to use it when call completes)
+// Helper function to decrement concurrent calls (call this when call completes)
 export const decrementConcurrentCalls = async (apiKey: string): Promise<void> => {
   try {
     const concurrentKey = `concurrent:${apiKey}`;
